@@ -1,111 +1,421 @@
-<!doctype html>
-
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>实时地球壁纸</title>
-  <style>
-    :root{--bg:#0b1220;--card:#0f1720}
-    html,body{height:100%;margin:0;font-family:system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;color:#e6eef8;background:linear-gradient(180deg,#08101a 0%, #071420 60%);}
-    .wrap{min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:36px 16px 48px;box-sizing:border-box}
-    .time-card{background:rgba(255,255,255,0.03);backdrop-filter:blur(6px);padding:10px 18px;border-radius:12px;margin-bottom:28px;box-shadow:0 6px 18px rgba(2,6,23,0.6);font-size:18px}
-    .canvas-holder{width:40vmin;height:40vmin;max-width:64vw;max-height:64vw;min-width:280px;min-height:280px;display:flex;align-items:center;justify-content:center}
-    canvas{display:block;width:100%;height:100%}
-    .footer{margin-top:22px;color:rgba(230,238,248,0.7);font-size:13px}
-    @media (max-width:600px){
-      .time-card{font-size:16px;padding:8px 14px}
-      .canvas-holder{width:60vmin;height:60vmin;min-width:220px;min-height:220px}
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>真实地球太空景观</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: #000;
+            color: white;
+            min-height: 100vh;
+            overflow: hidden;
+            cursor: none;
+        }
+
+        /* 时钟样式 - 分为两行 */
+        #clock-container {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            text-align: center;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 15px 25px;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        #date-time {
+            font-size: 1.8rem;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        #weekday {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+
+        /* 地球容器 */
+        #earth-container {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 40vmin;
+            height: 40vmin;
+            min-width: 300px;
+            min-height: 300px;
+            z-index: 10;
+        }
+
+        /* Three.js画布 */
+        #scene-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        /* 彩虹拖尾画布 */
+        #trail-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 50;
+            pointer-events: none;
+        }
+
+        /* 加载提示 */
+        .loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            z-index: 1000;
+            font-size: 1.2rem;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            #date-time { font-size: 1.4rem; }
+            #weekday { font-size: 1rem; }
+            #earth-container {
+                min-width: 250px;
+                min-height: 250px;
+            }
+        }
+    </style>
 </head>
 <body>
-  <div class="wrap">
-    <div id="time" class="time-card" aria-live="polite">加载中…</div>
-    <div class="canvas-holder" id="scene"></div>
-    <div class="footer">地球贴图：NASA / 自动根据本地时区显示昼夜</div>
-  </div>  <!-- Three.js from CDN -->  <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>  <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/examples/js/controls/OrbitControls.js"></script>  <script>
-  // ——— 时间显示 ———
-  const timeEl = document.getElementById('time');
-  const weekdays = ['星期日','星期一','星期二','星期三','星期四','星期五','星期六'];
-  function pad(n){return n.toString().padStart(2,'0')}
-  function formatCN(d){
-    const Y=d.getFullYear();
-    const M=pad(d.getMonth()+1);
-    const D=pad(d.getDate());
-    const h=pad(d.getHours());
-    const m=pad(d.getMinutes());
-    const s=pad(d.getSeconds());
-    const w=weekdays[d.getDay()];
-    return `${Y}年${M}月${D}日 ${h}:${m}:${s} ${w}`;
-  }
-  function tickTime(){
-    const now=new Date();
-    timeEl.textContent = formatCN(now);
-  }
-  setInterval(tickTime, 250);
-  tickTime();
+    <!-- 时钟显示 -->
+    <div id="clock-container">
+        <div id="date-time">2023年10月01日 12:00:00</div>
+        <div id="weekday">星期日</div>
+    </div>
 
-  // ——— Three.js 场景与地球 ———
-  const container = document.getElementById('scene');
-  const scene = new THREE.Scene();
-  const renderer = new THREE.WebGLRenderer({antialias:true,alpha:true});
-  renderer.setPixelRatio(window.devicePixelRatio);
-  container.appendChild(renderer.domElement);
+    <!-- 加载提示 -->
+    <div class="loading" id="loading">正在加载太空场景...</div>
 
-  const camera = new THREE.PerspectiveCamera(45,1,0.1,1000);
-  camera.position.set(0,0,2.6);
+    <!-- Three.js场景容器 -->
+    <div id="scene-container"></div>
 
-  const controls = new THREE.OrbitControls(camera, renderer.domElement);
-  controls.enablePan=false; controls.enableZoom=false; controls.autoRotate=false; controls.enableDamping=true; controls.maxPolarAngle = Math.PI/2 - 0.05;
+    <!-- 彩虹拖尾画布 -->
+    <canvas id="trail-canvas"></canvas>
 
-  // lights
-  const ambient = new THREE.AmbientLight(0xffffff, 0.15);
-  scene.add(ambient);
-  const sunLight = new THREE.DirectionalLight(0xffffff, 1.0);
-  scene.add(sunLight);
+    <!-- 引入Three.js库 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // 实时时钟功能
+        function updateClock() {
+            const now = new Date();
+            
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            
+            const weekdays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
+            const weekday = weekdays[now.getDay()];
+            
+            document.getElementById('date-time').textContent = 
+                `${year}年${month}月${day}日 ${hours}:${minutes}:${seconds}`;
+            document.getElementById('weekday').textContent = weekday;
+        }
 
-  // Earth textures (NASA public images)
-  const loader = new THREE.TextureLoader();
-  const dayURL = 'https://eoimages.gsfc.nasa.gov/images/imagerecords/74000/74469/land_ocean_ice_2048.jpg';
-  const nightURL = 'https://eoimages.gsfc.nasa.gov/images/imagerecords/74000/74468/earth_lights_lrg.jpg';
-  const specURL = 'https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/earthspec1k.jpg';
+        // 彩虹拖尾效果
+        class RainbowTrail {
+            constructor() {
+                this.canvas = document.getElementById('trail-canvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.points = [];
+                this.counter = 0;
+                
+                this.resize();
+                window.addEventListener('resize', () => this.resize());
+                
+                // 鼠标移动监听
+                document.addEventListener('mousemove', (e) => this.addPoint(e.clientX, e.clientY));
+                document.addEventListener('mousedown', (e) => this.addPoint(e.clientX, e.clientY));
+                
+                this.animate();
+            }
+            
+            resize() {
+                this.canvas.width = window.innerWidth;
+                this.canvas.height = window.innerHeight;
+            }
+            
+            addPoint(x, y) {
+                this.points.push({
+                    x, y,
+                    color: `hsl(${this.counter % 360}, 100%, 50%)`,
+                    life: 1.0
+                });
+                this.counter += 5;
+            }
+            
+            animate() {
+                this.ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+                this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+                
+                for (let i = 0; i < this.points.length; i++) {
+                    const point = this.points[i];
+                    
+                    if (i > 0) {
+                        const prev = this.points[i - 1];
+                        this.ctx.strokeStyle = point.color;
+                        this.ctx.lineWidth = 3 * point.life;
+                        this.ctx.globalAlpha = point.life;
+                        
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(prev.x, prev.y);
+                        this.ctx.lineTo(point.x, point.y);
+                        this.ctx.stroke();
+                    }
+                    
+                    point.life -= 0.02;
+                }
+                
+                this.points = this.points.filter(p => p.life > 0);
+                
+                requestAnimationFrame(() => this.animate());
+            }
+        }
 
-  const globeGroup = new THREE.Group();
-  scene.add(globeGroup);
+        // Three.js太空场景
+        class SpaceScene {
+            constructor() {
+                this.container = document.getElementById('scene-container');
+                this.scene = new THREE.Scene();
+                this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+                this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+                
+                this.init();
+            }
+            
+            init() {
+                // 渲染器设置
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.setClearColor(0x000000, 1);
+                this.container.appendChild(this.renderer.domElement);
+                
+                // 相机位置
+                this.camera.position.z = 15;
+                
+                // 添加光源
+                this.addLights();
+                
+                // 添加星空背景
+                this.addStars();
+                
+                // 添加地球
+                this.addEarth();
+                
+                // 添加月亮
+                this.addMoon();
+                
+                // 添加行星
+                this.addPlanets();
+                
+                // 窗口大小调整
+                window.addEventListener('resize', () => this.onWindowResize());
+                
+                // 隐藏加载提示
+                document.getElementById('loading').style.display = 'none';
+                
+                // 开始动画
+                this.animate();
+            }
+            
+            addLights() {
+                // 环境光
+                const ambientLight = new THREE.AmbientLight(0x333333);
+                this.scene.add(ambientLight);
+                
+                // 方向光（太阳）
+                const sunLight = new THREE.DirectionalLight(0xffffff, 1);
+                sunLight.position.set(5, 3, 5);
+                this.scene.add(sunLight);
+            }
+            
+            addStars() {
+                const starGeometry = new THREE.BufferGeometry();
+                const starCount = 5000;
+                const positions = new Float32Array(starCount * 3);
+                
+                for (let i = 0; i < starCount * 3; i++) {
+                    positions[i] = (Math.random() - 0.5) * 1000;
+                }
+                
+                starGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                
+                const starMaterial = new THREE.PointsMaterial({
+                    color: 0xffffff,
+                    size: 0.7,
+                    transparent: true
+                });
+                
+                const stars = new THREE.Points(starGeometry, starMaterial);
+                this.scene.add(stars);
+            }
+            
+            addEarth() {
+                // 创建更真实的地球
+                const earthGeometry = new THREE.SphereGeometry(5, 64, 64);
+                
+                // 使用更真实的颜色和材质
+                const earthMaterial = new THREE.MeshPhongMaterial({
+                    color: 0x1E90FF,
+                    specular: 0x222222,
+                    shininess: 5,
+                    transparent: true,
+                    opacity: 1
+                });
+                
+                this.earth = new THREE.Mesh(earthGeometry, earthMaterial);
+                this.scene.add(this.earth);
+                
+                // 添加大陆效果
+                this.addContinents();
+                
+                // 添加云层
+                const cloudGeometry = new THREE.SphereGeometry(5.1, 64, 64);
+                const cloudMaterial = new THREE.MeshPhongMaterial({
+                    color: 0xffffff,
+                    transparent: true,
+                    opacity: 0.2,
+                    side: THREE.DoubleSide
+                });
+                
+                this.clouds = new THREE.Mesh(cloudGeometry, cloudMaterial);
+                this.scene.add(this.clouds);
+            }
+            
+            addContinents() {
+                // 添加一些大陆形状
+                const continents = [
+                    { position: [0, 0, 4.9], size: [1.5, 1] }, // 北美
+                    { position: [1, -0.5, 4.9], size: [1.2, 0.8] }, // 南美
+                    { position: [3, 0.5, 4.9], size: [1.5, 1.2] }, // 亚洲
+                    { position: [1.5, 2, 4.9], size: [1, 0.8] }, // 欧洲
+                    { position: [2, -1.5, 4.9], size: [2, 1.5] }, // 非洲
+                    { position: [-2, -1, 4.9], size: [2.5, 1.8] } // 澳洲和南极
+                ];
+                
+                continents.forEach(continent => {
+                    const continentGeometry = new THREE.PlaneGeometry(continent.size[0], continent.size[1]);
+                    const continentMaterial = new THREE.MeshBasicMaterial({
+                        color: 0x228B22,
+                        side: THREE.DoubleSide
+                    });
+                    const continentMesh = new THREE.Mesh(continentGeometry, continentMaterial);
+                    
+                    continentMesh.position.set(
+                        continent.position[0],
+                        continent.position[1],
+                        continent.position[2]
+                    );
+                    
+                    // 使大陆贴合地球表面
+                    continentMesh.lookAt(0, 0, 0);
+                    this.earth.add(continentMesh);
+                });
+            }
+            
+            addMoon() {
+                const moonGeometry = new THREE.SphereGeometry(1.2, 32, 32);
+                const moonMaterial = new THREE.MeshPhongMaterial({
+                    color: 0x888888,
+                    specular: 0x222222,
+                    shininess: 5
+                });
+                
+                this.moon = new THREE.Mesh(moonGeometry, moonMaterial);
+                this.moon.position.set(12, 0, 0);
+                this.scene.add(this.moon);
+            }
+            
+            addPlanets() {
+                // 添加一些行星作为背景
+                const planets = [
+                    { size: 0.5, color: 0xff6b6b, position: [20, 8, -10] }, // 火星
+                    { size: 0.8, color: 0xffa500, position: [25, -10, 5] }, // 金星
+                    { size: 1.2, color: 0x87ceeb, position: [-15, 12, 8] }, // 天王星
+                    { size: 1.0, color: 0x4169e1, position: [-20, -8, 12] } // 海王星
+                ];
+                
+                planets.forEach(planetData => {
+                    const planetGeometry = new THREE.SphereGeometry(planetData.size, 32, 32);
+                    const planetMaterial = new THREE.MeshPhongMaterial({
+                        color: planetData.color,
+                        shininess: 30
+                    });
+                    const planet = new THREE.Mesh(planetGeometry, planetMaterial);
+                    planet.position.set(...planetData.position);
+                    this.scene.add(planet);
+                });
+            }
+            
+            onWindowResize() {
+                this.camera.aspect = window.innerWidth / window.innerHeight;
+                this.camera.updateProjectionMatrix();
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+            }
+            
+            animate() {
+                requestAnimationFrame(() => this.animate());
+                
+                // 地球自转
+                if (this.earth) {
+                    this.earth.rotation.y += 0.002;
+                }
+                
+                // 云层以稍慢速度旋转
+                if (this.clouds) {
+                    this.clouds.rotation.y += 0.0015;
+                }
+                
+                // 月球绕地球旋转
+                if (this.moon) {
+                    const time = Date.now() * 0.0005;
+                    this.moon.position.x = Math.cos(time) * 12;
+                    this.moon.position.z = Math.sin(time) * 12;
+                    this.moon.rotation.y += 0.005;
+                }
+                
+                this.renderer.render(this.scene, this.camera);
+            }
+        }
 
-  Promise.all([loader.loadAsync(dayURL), loader.loadAsync(nightURL).catch(()=>null), loader.loadAsync(specURL).catch(()=>null)])
-  .then(([dayTex, nightTex, specTex]) => {
-    const geometry = new THREE.SphereGeometry(0.98, 64, 64);
-    const material = new THREE.MeshPhongMaterial({
-      map: dayTex,
-      specularMap: specTex || null,
-      shininess: 8,
-      emissiveMap: nightTex || null,
-      emissive: new THREE.Color(0xffffff),
-      emissiveIntensity: 1.0
-    });
-    const earth = new THREE.Mesh(geometry, material);
-    globeGroup.add(earth);
+        // 初始化所有功能
+        function init() {
+            updateClock();
+            setInterval(updateClock, 1000);
+            
+            new RainbowTrail();
+            new SpaceScene();
+        }
 
-    // subtle cloud layer (optional)
-    const cloudMat = new THREE.MeshLambertMaterial({map: loader.load('https://raw.githubusercontent.com/creativetimofficial/public-assets/master/earth/clouds.png'), transparent:true, opacity:0.6});
-    const clouds = new THREE.Mesh(new THREE.SphereGeometry(1.01,64,64), cloudMat);
-    globeGroup.add(clouds);
-
-    // resize and render loop
-    let lastTime = Date.now();
-    function onResize(){
-      const rect = container.getBoundingClientRect();
-      renderer.setSize(rect.width, rect.height);
-      camera.aspect = rect.width/rect.height;
-      camera.updateProjectionMatrix();
-    }
-    window.addEventListener('resize', onResize);
-    onResize();
-
-    // compute sun position from current time (approximate)
-    function sunDirectionFromDate(d){
-      // UTC fractional hours
-      const utc = new Date(d.getTime() + d.getTimezoneOffset()*60000);
-  
+        // 页面加载完成后初始化
+        window.addEventListener('load', init);  
+    </script>
+</body>
+</html>
